@@ -149,3 +149,9 @@ Lets then use the random forest model to predict our test sample.
 predTest <- predict(fitRF,newdata=testing,type="class")
 predTest
 ```
+
+Write the predictions out to a file
+
+```{r}
+write.csv(predTest,"test_predictions.csv")
+```
