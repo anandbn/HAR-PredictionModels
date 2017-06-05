@@ -1,0 +1,151 @@
+---
+title: "HAR - Mahcine Learning Project Anaysis"
+author: "Anand Narasimhan"
+date: "6/5/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,cache = TRUE)
+```
+
+### Loading the data
+
+Let's download the training and testing files.
+
+```{r messages=FALSE}
+trLoc = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+tstLoc = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(trLoc,destfile = "training.csv")
+download.file(tstLoc,destfile = "testing.csv")
+training <- read.csv("training.csv",na.strings = c("NA","#DIV/0!",""))
+testing <- read.csv("testing.csv",na.string=c("NA","#DIV/0!",""))
+```
+
+Let's now partition the training data into train and test sets for us to get the model correct. 
+
+```{r}
+library(caret)
+inTrain <- createDataPartition(training$classe, p=0.6, list=FALSE)
+myTraining <- training[inTrain, ]
+myTesting <- training[-inTrain, ]
+dim(myTraining); dim(myTesting)
+```
+
+### Standardizing the data
+
+Let's look at the training data:
+
+```{r}
+str(myTraining)
+```
+
+We notice there's lots of columns that have NA values. So let's clean up those.
+
+
+#### 0 variance columns
+
+We'll remove any variables that have 0 impact on variance using the `nearZeroVar` function.
+
+```{r}
+nzv <- nearZeroVar(myTraining, saveMetrics=TRUE)
+myTraining <- myTraining[,nzv$nzv==FALSE]
+
+nzv<- nearZeroVar(myTesting,saveMetrics=TRUE)
+myTesting <- myTesting[,nzv$nzv==FALSE]
+
+dim(myTraining);dim(myTesting)
+```
+
+Remove the 1st column as that's just the row number. 
+```{r}
+myTraining <- myTraining[c(-1)]
+```
+
+#### Removing NA values
+
+Let's also remove any columns and rows that have >70% NA values.
+
+```{r}
+training_3 <- myTraining
+for(i in 1:length(myTraining)) {
+    if( sum( is.na( myTraining[, i] ) ) /nrow(myTraining) >= .7) {
+        for(j in 1:length(training_3)) {
+            if( length( grep(names(myTraining[i]), names(training_3)[j]) ) == 1)  {
+                training_3 <- training_3[ , -j]
+            }   
+        } 
+    }
+}
+myTraining <- training_3
+rm(training_3)
+```
+
+Now make sure that the testing and myTesting data sets are having the same columns as myTraining.
+
+```{r}
+clean1 <- colnames(myTraining)
+clean2 <- colnames(myTraining[, -58])  # remove the classe column
+myTesting <- myTesting[clean1]         # allow only variables in myTesting that are also in myTraining
+testing <- testing[clean2]             # allow only variables in testing that are also in myTraining
+```
+
+Make sure the data types of the columns are the same across the training,testing data sets.
+
+```{r}
+for (i in 1:length(testing) ) {
+    for(j in 1:length(myTraining)) {
+        if( length( grep(names(myTraining[i]), names(testing)[j]) ) == 1)  {
+            class(testing[j]) <- class(myTraining[i])
+        }      
+    }      
+}
+
+# To get the same class between testing and myTraining
+testing <- rbind(myTraining[2, -58] , testing)
+# Remove column 1 from the testing data set
+testing <- testing[-1,] 
+```
+
+### Prediction models
+
+#### RPart classification
+
+We'll do a simple decision tree classification using `rpart` and determine the accuracy of our model.
+
+```{r}
+library(rpart)
+set.seed(12345)
+fit <- rpart(classe ~ ., data=myTraining, method="class")
+```
+
+Now let's predict the classification of our `myTesting` and see the accuracy in the confusion matrix.
+
+```{r}
+library(caret)
+predRPart <- predict(fit, myTesting, type = "class")
+confusionMatrix(predRPart,myTesting$classe)
+```
+
+The Decision Tree model gave us a accuracy level of __88%__
+
+#### Random Forest model
+
+Let's now try usign a random forest prediction model:
+
+```{r}
+library(randomForest)
+set.seed(12345)
+fitRF <- randomForest(classe ~ ., data=myTraining)
+predRF <- predict(fitRF, myTesting, type = "class")
+confusionMatrix(predRF, myTesting$classe)
+```
+
+The accuracy of this model is __99.9%__ which is better than the decision tree using `rpart`.
+
+Lets then use the random forest model to predict our test sample.
+
+```{r}
+predTest <- predict(fitRF,newdata=testing,type="class")
+predTest
+```
